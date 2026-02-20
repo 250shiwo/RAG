@@ -1,0 +1,11 @@
+- [x] `POST /api/kb/upload`：保存文件成功，创建 Document 与分块记录
+- [x] `POST /api/kb/upload`：写入 FAISS 成功，向量数量随上传增加
+- [x] `GET /api/kb/{id}/documents`：返回该 kb 的文档列表（仅当前用户）
+- [x] `DELETE /api/document/{id}`：删除文档 DB 记录与分块记录
+- [x] `DELETE /api/document/{id}`：重建索引成功，FAISS 文件可加载且向量数更新
+- [x] 未登录访问 upload/documents/delete 均返回 401
+- [x] 资源归属正确：不能访问/删除他人 kb 或他人文档（返回 404 或 403，需一致）
+- [x] 测试用例覆盖并可在本项目测试命令下通过
+- [x] OpenAI API Key 不落库、不写入仓库、不打印到日志
+- [x] 上传重名文件（keep）：保留旧文档且新文档使用随机文件名
+- [x] 上传重名文件（replace）：旧文档被替换且索引与数据库一致

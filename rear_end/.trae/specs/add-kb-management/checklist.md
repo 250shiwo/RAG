@@ -1,0 +1,8 @@
+- [x] `POST /api/kb/create`：创建 KnowledgeBase 成功并返回 201
+- [x] `POST /api/kb/create`：数据库新增记录，且 `faiss_path` 写入正确
+- [x] `POST /api/kb/create`：磁盘生成空 index 文件（路径与 `faiss_path` 一致）
+- [x] `GET /api/kb/list`：仅返回当前用户的知识库列表
+- [x] `DELETE /api/kb/{id}`：删除成功返回 204
+- [x] `DELETE /api/kb/{id}`：删除数据库记录并删除对应索引文件（文件不存在也可删除成功）
+- [x] 未登录访问 create/list/delete 均返回 401
+- [x] 测试用例覆盖并可在本项目测试命令下通过

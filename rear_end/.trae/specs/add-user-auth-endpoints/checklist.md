@@ -1,0 +1,8 @@
+- [x] `/api/users/register`：创建用户成功，返回不含密码的用户信息
+- [x] `/api/users/register`：用户名重复时返回 400 且错误信息清晰
+- [x] `/api/users/login`：正确凭证返回 access/refresh
+- [x] `/api/users/login`：错误凭证返回 401
+- [x] `/api/users/me`：携带 Bearer access 返回当前用户信息
+- [x] `/api/users/me`：未携带/无效 token 返回 401
+- [x] 后续受保护接口可通过 Bearer token 访问（认证链路可复用）
+- [x] 测试用例覆盖并可在本项目测试命令下通过
