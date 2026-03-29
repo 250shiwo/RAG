@@ -1,30 +1,187 @@
 <script setup>
-import HelloWorld from './components/HelloWorld.vue'
+import { computed } from 'vue'
+import { useRoute, useRouter, RouterView } from 'vue-router'
+import { DataBoard, Document, ChatLineRound, SwitchButton, User, Files } from '@element-plus/icons-vue'
+import { clearTokens, hasAccessToken } from './services/auth'
+
+const route = useRoute()
+const router = useRouter()
+
+const requiresAuth = computed(() => Boolean(route.meta?.requiresAuth))
+const kbId = computed(() => route.params?.kbId)
+
+// 退出登录函数
+function logout() {
+  clearTokens()
+  router.push('/login')
+}
 </script>
 
 <template>
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
+  <RouterView v-if="!requiresAuth" />
+  <el-container v-else class="app-container">
+    <!-- 左侧边栏 -->
+    <el-aside width="260px" class="sidebar">
+      <div class="logo-area">
+        <div class="logo-icon">R</div>
+        <span class="logo-text">RAG 智能助手</span>
+      </div>
+      <el-menu 
+        :default-active="$route.path" 
+        router 
+        class="custom-menu"
+        :collapse-transition="false"
+      >
+        <el-menu-item index="/kb">
+          <el-icon><DataBoard /></el-icon>
+          <span>知识库列表</span>
+        </el-menu-item>
+        <div v-if="kbId" class="menu-divider"></div>
+        <el-menu-item v-if="kbId" :index="`/kb/${kbId}/documents`">
+          <el-icon><Document /></el-icon>
+          <span>文档管理</span>
+        </el-menu-item>
+        <el-menu-item v-if="kbId" :index="`/kb/${kbId}/chat`">
+          <el-icon><ChatLineRound /></el-icon>
+          <span>智能问答</span>
+        </el-menu-item>
+
+        <div class="menu-divider"></div>
+        <div class="menu-group-title">管理员专区</div>
+        <el-menu-item index="/admin/users">
+          <el-icon><User /></el-icon>
+          <span>用户管理</span>
+        </el-menu-item>
+        <el-menu-item index="/admin/kbs">
+          <el-icon><Files /></el-icon>
+          <span>全局知识库</span>
+        </el-menu-item>
+      </el-menu>
+      
+      <!-- 底部用户信息或退出登录 -->
+      <div class="sidebar-footer">
+        <el-button v-if="hasAccessToken()" class="logout-btn" type="danger" text @click="logout">
+          <el-icon><SwitchButton /></el-icon>
+          退出登录
+        </el-button>
+      </div>
+    </el-aside>
+    
+    <!-- 右侧主体内容 -->
+    <el-container class="main-container">
+      <!-- 隐藏原生 Header，在各个页面内部实现更定制化的 Header -->
+      <el-main class="main-content">
+        <RouterView />
+      </el-main>
+    </el-container>
+  </el-container>
 </template>
 
 <style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
+.app-container {
+  height: 100vh;
+  width: 100vw;
+  background-color: var(--bg-color);
 }
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
+
+.sidebar {
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
 }
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
+
+.logo-area {
+  padding: 24px 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.logo-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #0066cc, #004499);
+  color: white;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: bold;
+}
+
+.logo-text {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.custom-menu {
+  border-right: none;
+  background-color: transparent;
+  flex-grow: 1;
+  padding: 0 12px;
+}
+
+.custom-menu .el-menu-item {
+  height: 48px;
+  line-height: 48px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.custom-menu .el-menu-item:hover {
+  background-color: var(--bg-color);
+  color: var(--text-primary);
+}
+
+.custom-menu .el-menu-item.is-active {
+  background-color: #e6f0fa;
+  color: var(--primary-color);
+  font-weight: 600;
+}
+
+.menu-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 16px 8px;
+}
+
+.menu-group-title {
+  padding: 0 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+}
+
+.logout-btn {
+  width: 100%;
+  justify-content: flex-start;
+  padding-left: 12px;
+  border-radius: 8px;
+  height: 44px;
+}
+
+.main-container {
+  background-color: var(--bg-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.main-content {
+  padding: 0;
+  height: 100%;
+  overflow: hidden; /* 由子组件负责滚动 */
 }
 </style>
