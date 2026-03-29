@@ -23,5 +23,6 @@ urlpatterns = [
     path("api/kb/", include("knowledge.urls")),
     path("api/document/", include("knowledge.document_urls")),
     path("api/rag/", include("rag.urls")),
+    path("api/admin/", include("rear_end.admin_urls")),
 ]
  

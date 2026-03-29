@@ -9,7 +9,10 @@ from __future__ import annotations
 """
 
 import os
+import json
+import threading
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Iterable
 
@@ -84,17 +87,19 @@ def embed_texts_langchain_openai(texts: list[str]) -> np.ndarray:
     if not cfg.model:
         raise RuntimeError("OPENAI_EMBEDDING_MODEL 未配置")
 
-    from langchain_openai import OpenAIEmbeddings
-
-    kwargs = {"model": cfg.model, "api_key": api_key}
-    if cfg.base_url:
-        kwargs["base_url"] = cfg.base_url
-
-    # DashScope 的 OpenAI 兼容 embeddings 接口不接受 token ids 列表作为 input，
-    # 关闭长度安全逻辑以确保按 list[str] 直接发送。
-    embeddings = OpenAIEmbeddings(check_embedding_ctx_length=False, **kwargs)
+    embeddings = _get_openai_embeddings(cfg.model, cfg.base_url, api_key)
     vectors = embeddings.embed_documents(texts)
     return np.asarray(vectors, dtype=np.float32)
+
+
+@lru_cache(maxsize=4)
+def _get_openai_embeddings(model: str, base_url: str, api_key: str):
+    from langchain_openai import OpenAIEmbeddings
+
+    kwargs = {"model": model, "api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAIEmbeddings(check_embedding_ctx_length=False, **kwargs)
 
 
 def _faiss():
@@ -103,12 +108,32 @@ def _faiss():
     return faiss
 
 
+_INDEX_CACHE_LOCK = threading.Lock()
+_INDEX_CACHE: dict[str, tuple[float, object]] = {}
+
+_META_CACHE_LOCK = threading.Lock()
+_META_CACHE: dict[str, tuple[float, list[int]]] = {}
+
+
+def _meta_path(index_path: Path) -> Path:
+    return index_path.with_name(f"{index_path.name}.meta.json")
+
+
 def load_faiss_index(index_path: Path):
     faiss = _faiss()
     if not index_path.exists() or index_path.stat().st_size == 0:
         return None
+    key = str(index_path.resolve())
+    mtime = float(index_path.stat().st_mtime)
+    with _INDEX_CACHE_LOCK:
+        cached = _INDEX_CACHE.get(key)
+        if cached and cached[0] == mtime:
+            return cached[1]
     try:
-        return faiss.read_index(str(index_path))
+        index = faiss.read_index(str(index_path))
+        with _INDEX_CACHE_LOCK:
+            _INDEX_CACHE[key] = (mtime, index)
+        return index
     except Exception:
         return None
 
@@ -119,7 +144,41 @@ def save_faiss_index(index, index_path: Path) -> None:
     faiss.write_index(index, str(index_path))
 
 
-def add_vectors_to_index(index_path: Path, texts: list[str]) -> int:
+def load_faiss_meta(index_path: Path) -> list[int] | None:
+    mp = _meta_path(index_path)
+    if not mp.exists() or mp.stat().st_size == 0:
+        return None
+    key = str(mp.resolve())
+    mtime = float(mp.stat().st_mtime)
+    with _META_CACHE_LOCK:
+        cached = _META_CACHE.get(key)
+        if cached and cached[0] == mtime:
+            return list(cached[1])
+    try:
+        data = json.loads(mp.read_text(encoding="utf-8"))
+        if not isinstance(data, list):
+            return None
+        ids = [int(x) for x in data]
+        with _META_CACHE_LOCK:
+            _META_CACHE[key] = (mtime, ids)
+        return list(ids)
+    except Exception:
+        return None
+
+
+def save_faiss_meta(index_path: Path, chunk_ids: list[int]) -> None:
+    mp = _meta_path(index_path)
+    mp.parent.mkdir(parents=True, exist_ok=True)
+    tmp = mp.with_name(f"{mp.name}.tmp")
+    tmp.write_text(json.dumps([int(x) for x in chunk_ids], ensure_ascii=False), encoding="utf-8")
+    os.replace(str(tmp), str(mp))
+    key = str(mp.resolve())
+    mtime = float(mp.stat().st_mtime)
+    with _META_CACHE_LOCK:
+        _META_CACHE[key] = (mtime, list(chunk_ids))
+
+
+def add_vectors_to_index(index_path: Path, texts: list[str], chunk_ids: list[int] | None = None) -> int:
     if not texts:
         return 0
     vectors = embed_texts(texts)
@@ -132,11 +191,23 @@ def add_vectors_to_index(index_path: Path, texts: list[str]) -> int:
 
     index.add(vectors)
     save_faiss_index(index, index_path)
+    if chunk_ids is not None:
+        existing = load_faiss_meta(index_path) or []
+        existing.extend([int(x) for x in chunk_ids])
+        save_faiss_meta(index_path, existing)
     return int(vectors.shape[0])
 
 
-def rebuild_index(index_path: Path, texts: Iterable[str]) -> int:
-    texts_list = [t for t in texts if (t or "").strip()]
+def rebuild_index(index_path: Path, texts: Iterable[str], chunk_ids: Iterable[int] | None = None) -> int:
+    texts_list: list[str] = []
+    ids_list: list[int] = []
+    if chunk_ids is None:
+        texts_list = [t for t in texts if (t or "").strip()]
+    else:
+        for cid, t in zip(chunk_ids, texts):
+            if (t or "").strip():
+                texts_list.append(t)
+                ids_list.append(int(cid))
     if not texts_list:
         try:
             index_path.unlink()
@@ -144,6 +215,11 @@ def rebuild_index(index_path: Path, texts: Iterable[str]) -> int:
             pass
         index_path.parent.mkdir(parents=True, exist_ok=True)
         index_path.open("wb").close()
+        mp = _meta_path(index_path)
+        try:
+            mp.unlink()
+        except FileNotFoundError:
+            pass
         return 0
 
     vectors = embed_texts(texts_list)
@@ -152,6 +228,8 @@ def rebuild_index(index_path: Path, texts: Iterable[str]) -> int:
     index = faiss.IndexFlatL2(dim)
     index.add(vectors)
     save_faiss_index(index, index_path)
+    if chunk_ids is not None:
+        save_faiss_meta(index_path, ids_list)
     return int(vectors.shape[0])
 
 

@@ -14,6 +14,54 @@ from .vectorstore import count_vectors
 User = get_user_model()
 
 
+def _build_simple_pdf_bytes(text: str = "Hello PDF") -> bytes:
+    # 构造一个最小可解析的 PDF（包含可提取文本），用于测试 PDF 入库流程
+    def _escape_pdf_string(s: str) -> str:
+        return s.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+    stream = "\n".join(
+        [
+            "BT",
+            "/F1 24 Tf",
+            "72 120 Td",
+            f"({_escape_pdf_string(text)}) Tj",
+            "ET",
+            "",
+        ]
+    ).encode("utf-8")
+
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 200] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >> >>",
+        b"<< /Length %d >>\nstream\n%bendstream" % (len(stream), stream),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+
+    out = bytearray()
+    out += b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n"
+
+    offsets = [0]
+    for i, body in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode("ascii")
+        out += body + b"\n"
+        out += b"endobj\n"
+
+    xref_offset = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n".encode("ascii")
+    out += b"0000000000 65535 f \n"
+    for off in offsets[1:]:
+        out += f"{off:010d} 00000 n \n".encode("ascii")
+
+    out += b"trailer\n"
+    out += f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n".encode("ascii")
+    out += b"startxref\n"
+    out += f"{xref_offset}\n".encode("ascii")
+    out += b"%%EOF\n"
+    return bytes(out)
+
+
 class KnowledgeBaseApiTests(APITestCase):
     # 覆盖鉴权、创建索引文件、用户隔离与删除清理
     def setUp(self):
@@ -290,3 +338,64 @@ class DocumentIngestionApiTests(APITestCase):
                 self.assertEqual(Document.objects.filter(kb_id=kb_id, filename="a.txt").count(), 1)
                 total_chunks = DocumentChunk.objects.filter(document__kb_id=kb_id).count()
                 self.assertEqual(count_vectors(kb_faiss_path), total_chunks)
+
+    def test_upload_md_and_pdf(self):
+        with tempfile.TemporaryDirectory() as faiss_dir, tempfile.TemporaryDirectory() as upload_dir:
+            with override_settings(FAISS_INDEX_ROOT=Path(faiss_dir), KB_UPLOAD_ROOT=Path(upload_dir)):
+                access1 = self._login_and_get_access("doc_u1", "StrongPass123!@#")
+
+                kb_resp = self.client.post(
+                    "/api/kb/create",
+                    {"name": "kb1"},
+                    format="json",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(kb_resp.status_code, 201)
+                kb_id = kb_resp.data["id"]
+
+                md = SimpleUploadedFile(
+                    "a.md",
+                    ("# Title\n\nhello **world**\n" * 20).encode("utf-8"),
+                    content_type="text/markdown",
+                )
+                md_resp = self.client.post(
+                    "/api/kb/upload",
+                    {"kb_id": kb_id, "file": md},
+                    format="multipart",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(md_resp.status_code, 201)
+
+                pdf_bytes = _build_simple_pdf_bytes("Hello PDF")
+                pdf = SimpleUploadedFile("a.pdf", pdf_bytes, content_type="application/pdf")
+                pdf_resp = self.client.post(
+                    "/api/kb/upload",
+                    {"kb_id": kb_id, "file": pdf},
+                    format="multipart",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(pdf_resp.status_code, 201)
+                self.assertTrue(Document.objects.filter(kb_id=kb_id, filename="a.pdf").exists())
+
+    def test_reject_unsupported_suffix(self):
+        with tempfile.TemporaryDirectory() as faiss_dir, tempfile.TemporaryDirectory() as upload_dir:
+            with override_settings(FAISS_INDEX_ROOT=Path(faiss_dir), KB_UPLOAD_ROOT=Path(upload_dir)):
+                access1 = self._login_and_get_access("doc_u1", "StrongPass123!@#")
+
+                kb_resp = self.client.post(
+                    "/api/kb/create",
+                    {"name": "kb1"},
+                    format="json",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(kb_resp.status_code, 201)
+                kb_id = kb_resp.data["id"]
+
+                bad = SimpleUploadedFile("a.exe", b"not allowed", content_type="application/octet-stream")
+                resp = self.client.post(
+                    "/api/kb/upload",
+                    {"kb_id": kb_id, "file": bad},
+                    format="multipart",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(resp.status_code, 400)

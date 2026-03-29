@@ -1,0 +1,7 @@
+- [x] `POST /api/rag/chat` 支持参数 `kb_id` 与 `question`，校验失败返回 400
+- [x] 未登录访问 `POST /api/rag/chat` 返回 401
+- [x] 资源归属正确：不能对他人 kb 发起问答（返回 404 或 403，需一致）
+- [x] 问答流程按 RAG 执行：加载索引 → embedding → 相似度检索 → 取文本块 → prompt → 调用模型
+- [x] 能返回自然语言回答：200 响应包含非空 `answer`
+- [x] 不在日志中打印 API key、token 等敏感信息
+- [x] 测试用例覆盖并可在本项目测试命令下通过

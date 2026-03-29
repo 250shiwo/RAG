@@ -1,0 +1,8 @@
+- [x] /api/admin/* 全部需要 JWT，未登录 401、非管理员 403
+- [x] GET /api/admin/users 返回用户列表，过滤参数生效
+- [x] POST/PATCH/DELETE /api/admin/users 行为与状态码符合 spec
+- [x] GET/POST/PATCH/DELETE /api/admin/kb 行为与状态码符合 spec
+- [x] GET /api/admin/kb/{id}/documents 返回该知识库文档列表
+- [x] DELETE /api/admin/document/{id} 删除文档并保持索引与数据库一致
+- [x] POST /api/rag/chat 返回 answer + elapsed_ms + token_usage（缺失时为 null）
+- [x] API.md 已更新且测试用例覆盖管理员权限与关键路径

@@ -225,7 +225,7 @@ Base URL：`http://127.0.0.1:8000`
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | kb_id | number | 是 | 目标知识库 id |
-| file | file | 是 | 上传文件（当前最小支持 txt） |
+| file | file | 是 | 上传文件（支持 txt / md / pdf） |
 | on_conflict | string | 否 | 重名处理：`keep` 保留（随机文件名），`replace` 替换 |
 
 ### 返回格式
@@ -303,3 +303,184 @@ Base URL：`http://127.0.0.1:8000`
 - `204`：删除成功（删除 Document/Chunk 记录，删除原文件，重建该 kb 的 FAISS 索引）
 - `401`：未携带 token / token 无效 / token 过期
 - `404`：文档不存在或不属于当前用户
+
+## 12. 问答（RAG Chat）
+
+**接口路径**：`POST /api/rag/chat`  
+**是否鉴权**：是（必须 Bearer access）
+
+### 请求头
+- `Content-Type: application/json`
+- `Authorization: Bearer <access>`
+
+### 请求参数（JSON Body）
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| kb_id | number | 是 | 目标知识库 id |
+| question | string | 是 | 用户问题（非空字符串） |
+
+### 返回格式
+**200 OK**
+```json
+{
+  "answer": "自然语言回答文本",
+  "elapsed_ms": 1234,
+  "token_usage": {
+    "prompt_tokens": 100,
+    "completion_tokens": 50,
+    "total_tokens": 150
+  }
+}
+```
+
+### 状态码
+- `200`：成功
+- `400`：参数校验失败，或知识库索引不可用，或知识库无可检索内容
+- `401`：未携带 token / token 无效 / token 过期
+- `404`：知识库不存在或不属于当前用户
+
+### 处理流程（简述）
+- 加载索引 → embedding 问题 → 相似度检索 → 取文本块 → 拼接 prompt → 调用模型 → 返回回答
+
+### 备注
+- 模型调用使用 OpenAI 兼容 API，API Key 通过环境变量 `OPENAI_API_KEY` 或 `DASHSCOPE_API_KEY` 提供
+- 可通过 `OPENAI_BASE_URL`、`OPENAI_CHAT_MODEL`（或 `OPENAI_MODEL`）配置模型与接口地址
+- 若无法获取 token 用量，`token_usage` 的子字段会返回 `null`
+
+## 13. 管理员接口（后台 API）
+
+Base Path：`/api/admin/`  
+**是否鉴权**：是（必须 Bearer access）  
+**权限**：需要管理员（Django `is_staff` / `is_superuser`）
+
+### 13.1 获取用户列表
+**接口路径**：`GET /api/admin/users`
+
+Query（可选）：
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| q | string | 否 | 按 username/email 模糊搜索 |
+| is_active | boolean | 否 | 按是否启用过滤（true/false） |
+
+**200 OK**
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "username": "u1",
+      "email": "",
+      "is_active": true,
+      "is_staff": false,
+      "date_joined": "2026-02-20T12:34:56.123Z"
+    }
+  ]
+}
+```
+
+### 13.2 创建用户
+**接口路径**：`POST /api/admin/users`
+
+Body（JSON）：
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| username | string | 是 | 用户名（需唯一） |
+| password | string | 是 | 密码（按 Django 规则校验并 hash） |
+| email | string | 否 | 邮箱 |
+| is_active | boolean | 否 | 是否启用（默认 true） |
+| is_staff | boolean | 否 | 是否管理员（默认 false） |
+
+**201 Created**：返回创建后的用户对象（不含密码）
+
+### 13.3 更新用户 / 重置密码
+**接口路径**：`PATCH /api/admin/users/{id}`
+
+Body（JSON，至少一项）：
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| username | string | 否 | 用户名 |
+| email | string | 否 | 邮箱 |
+| is_active | boolean | 否 | 是否启用 |
+| is_staff | boolean | 否 | 是否管理员 |
+| password | string | 否 | 若提供则重置密码 |
+
+**200 OK**：返回更新后的用户对象
+
+### 13.4 删除用户
+**接口路径**：`DELETE /api/admin/users/{id}`
+
+**204 No Content**
+
+### 13.5 获取知识库列表
+**接口路径**：`GET /api/admin/kb`
+
+Query（可选）：
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id | number | 否 | 仅返回指定用户的知识库 |
+
+**200 OK**
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "name": "kb1",
+      "description": "d1",
+      "faiss_path": "E:\\\\code\\\\RAG\\\\rear_end\\\\faiss_indexes\\\\user_1\\\\kb_1.index",
+      "created_at": "2026-02-20T12:34:56.123Z"
+    }
+  ]
+}
+```
+
+### 13.6 创建知识库（指定用户）
+**接口路径**：`POST /api/admin/kb`
+
+Body（JSON）：
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id | number | 是 | 归属用户 id |
+| name | string | 是 | 知识库名称 |
+| description | string | 否 | 描述 |
+
+**201 Created**：返回创建后的知识库对象（并创建空索引文件）
+
+### 13.7 更新知识库
+**接口路径**：`PATCH /api/admin/kb/{id}`
+
+Body（JSON，至少一项）：
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| name | string | 否 | 名称 |
+| description | string | 否 | 描述 |
+
+**200 OK**：返回更新后的知识库对象
+
+### 13.8 删除知识库
+**接口路径**：`DELETE /api/admin/kb/{id}`
+
+**204 No Content**（同时删除索引文件）
+
+### 13.9 获取知识库文档列表
+**接口路径**：`GET /api/admin/kb/{id}/documents`
+
+**200 OK**
+```json
+{
+  "items": [
+    {
+      "id": 1,
+      "filename": "a.txt",
+      "chunk_count": 3,
+      "uploaded_at": "2026-02-20T12:34:56.123Z"
+    }
+  ]
+}
+```
+
+### 13.10 删除文档（重建索引）
+**接口路径**：`DELETE /api/admin/document/{id}`
+
+**204 No Content**（删除 Document/Chunk/原文件，并重建该知识库索引）

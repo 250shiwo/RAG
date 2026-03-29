@@ -1,4 +1,5 @@
 import uuid
+import io
 from pathlib import Path
 
 from django.db import transaction
@@ -21,6 +22,43 @@ from .services import (
     save_uploaded_file,
 )
 from .vectorstore import add_vectors_to_index, chunk_text, rebuild_index
+
+
+def _decode_text_bytes(raw: bytes) -> str:
+    # 文本类文件：优先 utf-8，失败回退 gbk（兼容部分 Windows 文本）
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("gbk", errors="ignore")
+
+
+def _extract_pdf_text(raw: bytes) -> str:
+    # PDF 文件：通过 pypdf 提取每页文字（扫描件/图片型 PDF 通常无文本）
+    if not raw.startswith(b"%PDF"):
+        raise ValueError("不是有效的 PDF 文件")
+    try:
+        from pypdf import PdfReader
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError("服务端未安装 PDF 解析依赖 pypdf") from e
+
+    reader = PdfReader(io.BytesIO(raw))
+    texts: list[str] = []
+    for page in reader.pages:
+        t = page.extract_text() or ""
+        if t.strip():
+            texts.append(t)
+    return "\n".join(texts)
+
+
+def _extract_upload_text(upload_path: Path) -> str:
+    # 统一抽取文本入口：根据后缀选择解析方式
+    suffix = upload_path.suffix.lower()
+    raw = upload_path.read_bytes()
+    if suffix in {".txt", ".md"}:
+        return _decode_text_bytes(raw)
+    if suffix == ".pdf":
+        return _extract_pdf_text(raw)
+    raise ValueError("不支持的文件类型")
 
 
 class KnowledgeBaseCreateView(APIView):
@@ -108,12 +146,15 @@ class KnowledgeBaseUploadView(APIView):
         upload_path = build_upload_path(request.user.id, kb.id, filename)
         save_uploaded_file(upload_path, file_obj)
 
-        # 当前最小实现：将上传文件按文本读取（优先 utf-8，失败回退 gbk）。
-        raw = upload_path.read_bytes()
+        # 按文件类型抽取文本：txt/md 直接解码，pdf 走解析器
         try:
-            text = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            text = raw.decode("gbk", errors="ignore")
+            text = _extract_upload_text(upload_path)
+        except ValueError as e:
+            safe_remove_file(upload_path)
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as e:
+            safe_remove_file(upload_path)
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         # 分块：后续 RAG 检索/重建索引都以 chunk 为最小单元。
         chunks = chunk_text(text)
@@ -141,18 +182,25 @@ class KnowledgeBaseUploadView(APIView):
                 [DocumentChunk(document=doc, chunk_index=i, text=t) for i, t in enumerate(chunks)]
             )
 
+        chunk_ids = list(
+            DocumentChunk.objects.filter(document=doc).order_by("chunk_index").values_list("id", flat=True)
+        )
+
         faiss_path = Path(kb.faiss_path)
         if has_conflict and on_conflict == "replace":
             for fp in removed_files:
                 safe_remove_file(fp)
 
+            remaining_ids = DocumentChunk.objects.filter(document__kb=kb).order_by(
+                "document_id", "chunk_index"
+            ).values_list("id", flat=True)
             remaining_texts = DocumentChunk.objects.filter(document__kb=kb).order_by(
                 "document_id", "chunk_index"
             ).values_list("text", flat=True)
-            rebuild_index(faiss_path, remaining_texts)
+            rebuild_index(faiss_path, remaining_texts, chunk_ids=remaining_ids)
         else:
             # 向量写入 FAISS：写入到该知识库的 kb.faiss_path。
-            added = add_vectors_to_index(faiss_path, chunks)
+            added = add_vectors_to_index(faiss_path, chunks, chunk_ids=chunk_ids)
             if added != len(chunks):
                 return Response({"detail": "向量写入失败"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -207,9 +255,12 @@ class DocumentDeleteView(APIView):
             safe_remove_file(file_path)
 
         # 删除文档后通过“重建索引”保持 FAISS 与数据库一致。
+        remaining_ids = DocumentChunk.objects.filter(document__kb=kb).order_by(
+            "document_id", "chunk_index"
+        ).values_list("id", flat=True)
         remaining_texts = DocumentChunk.objects.filter(document__kb=kb).order_by(
             "document_id", "chunk_index"
         ).values_list("text", flat=True)
-        rebuild_index(Path(faiss_path), remaining_texts)
+        rebuild_index(Path(faiss_path), remaining_texts, chunk_ids=remaining_ids)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
