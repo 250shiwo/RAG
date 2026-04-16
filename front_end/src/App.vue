@@ -56,6 +56,12 @@ function logout() {
           <el-icon><Files /></el-icon>
           <span>全局知识库</span>
         </el-menu-item>
+        
+        <div class="menu-divider"></div>
+        <el-menu-item index="/subscription">
+          <el-icon><SwitchButton /></el-icon>
+          <span>订阅管理</span>
+        </el-menu-item>
       </el-menu>
       
       <!-- 底部用户信息或退出登录 -->

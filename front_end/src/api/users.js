@@ -20,3 +20,24 @@ export async function getMe() {
   return resp.data
 }
 
+// 订阅相关API
+export async function getSubscriptionPlans() {
+  const resp = await api.get('/api/users/subscriptions/plans')
+  return resp.data
+}
+
+export async function getUserSubscription() {
+  const resp = await api.get('/api/users/subscriptions/me')
+  return resp.data
+}
+
+export async function getUserUsage() {
+  const resp = await api.get('/api/users/subscriptions/usage')
+  return resp.data
+}
+
+export async function subscribeToPlan(planId) {
+  const resp = await api.post('/api/users/subscriptions/subscribe', { plan_id: planId })
+  return resp.data
+}
+

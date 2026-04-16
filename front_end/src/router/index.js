@@ -5,6 +5,7 @@ import KbDocumentsView from '../views/KbDocumentsView.vue'
 import KbListView from '../views/KbListView.vue'
 import LoginView from '../views/LoginView.vue'
 import RegisterView from '../views/RegisterView.vue'
+import SubscriptionView from '../views/SubscriptionView.vue'
 import AdminUsersView from '../views/admin/AdminUsersView.vue'
 import AdminKbsView from '../views/admin/AdminKbsView.vue'
 import { hasAccessToken } from '../services/auth'
@@ -16,6 +17,7 @@ const routes = [
   { path: '/kb', component: KbListView, meta: { requiresAuth: true, title: '知识库' } },
   { path: '/kb/:kbId/documents', component: KbDocumentsView, meta: { requiresAuth: true, title: '文档' } },
   { path: '/kb/:kbId/chat', component: ChatView, meta: { requiresAuth: true, title: '问答' } },
+  { path: '/subscription', component: SubscriptionView, meta: { requiresAuth: true, title: '订阅管理' } },
   { path: '/admin/users', component: AdminUsersView, meta: { requiresAuth: true, title: '用户管理' } },
   { path: '/admin/kbs', component: AdminKbsView, meta: { requiresAuth: true, title: '全局知识库' } },
 ]
