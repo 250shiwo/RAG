@@ -6,6 +6,8 @@ from .views import (
     KnowledgeBaseDocumentsView,
     KnowledgeBaseListView,
     KnowledgeBaseUploadView,
+    DocumentDeleteView,
+    DocumentPreviewView,
 )
 
 urlpatterns = [
@@ -14,4 +16,6 @@ urlpatterns = [
     path("upload", KnowledgeBaseUploadView.as_view(), name="kb-upload"),
     path("<int:kb_id>/documents", KnowledgeBaseDocumentsView.as_view(), name="kb-documents"),
     path("<int:kb_id>", KnowledgeBaseDeleteView.as_view(), name="kb-delete"),
+    path("document/<int:doc_id>", DocumentDeleteView.as_view(), name="document-delete"),
+    path("document/<int:doc_id>/preview", DocumentPreviewView.as_view(), name="document-preview"),
 ]

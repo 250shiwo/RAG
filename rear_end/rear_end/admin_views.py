@@ -1,9 +1,10 @@
 from pathlib import Path
+from datetime import date
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from django.db.models import Q
+from django.db.models import Q, Count
 from rest_framework import serializers
 from rest_framework import status
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
@@ -13,6 +14,8 @@ from rest_framework.views import APIView
 from knowledge.models import Document, DocumentChunk, KnowledgeBase
 from knowledge.services import build_kb_index_path, create_empty_index_file, safe_remove_file
 from knowledge.vectorstore import rebuild_index
+from rag.models import ChatHistory
+from users.models import UserSubscription, UserUsage
 
 User = get_user_model()
 
@@ -316,3 +319,67 @@ class AdminDocumentDetailView(AdminBaseView):
         rebuild_index(Path(faiss_path), remaining_texts, chunk_ids=remaining_ids)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class AdminStatsView(AdminBaseView):
+    def get(self, request):
+        # 用户统计
+        total_users = User.objects.count()
+        active_users = User.objects.filter(is_active=True).count()
+        
+        # 知识库统计
+        total_kbs = KnowledgeBase.objects.count()
+        
+        # 文档统计
+        total_documents = Document.objects.count()
+        
+        # 聊天统计
+        total_chats = ChatHistory.objects.count()
+        today_chats = ChatHistory.objects.filter(created_at__date=date.today()).count()
+        
+        # 订阅统计
+        subscription_stats = UserSubscription.objects.filter(
+            is_active=True
+        ).values(
+            'plan__name'
+        ).annotate(
+            user_count=Count('user')
+        ).order_by('plan__name')
+        
+        # 今日使用统计
+        today_usage = UserUsage.objects.filter(date=date.today()).aggregate(
+            total_chat_count=Count('chat_count'),
+            sum_chat_count=Count('chat_count')
+        )
+        
+        stats = {
+            "users": {
+                "total": total_users,
+                "active": active_users
+            },
+            "knowledge_bases": {
+                "total": total_kbs
+            },
+            "documents": {
+                "total": total_documents
+            },
+            "chats": {
+                "total": total_chats,
+                "today": today_chats
+            },
+            "subscriptions": [
+                {
+                    "plan": item['plan__name'],
+                    "user_count": item['user_count']
+                }
+                for item in subscription_stats
+            ],
+            "usage": {
+                "today": {
+                    "total_users": today_usage['total_chat_count'] or 0,
+                    "total_chats": today_usage['sum_chat_count'] or 0
+                }
+            }
+        }
+        
+        return Response(stats, status=status.HTTP_200_OK)

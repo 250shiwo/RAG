@@ -298,11 +298,16 @@ def rag_chat_stream(kb: KnowledgeBase, question: str):
     contexts = retrieve_contexts(kb, question, top_k=cfg.top_k)
     t1 = time.perf_counter()
 
+    # 生成完整回答以保存到数据库
+    answer, usage = generate_answer_with_usage(question, contexts, max_context_chars=cfg.max_context_chars)
+    answer = (answer or "").strip()
+    t2 = time.perf_counter()
+    elapsed_ms = int(max(0.0, (t2 - t0) * 1000.0))
+
     def gen():
         try:
             yield from stream_answer(question, contexts, max_context_chars=cfg.max_context_chars)
         finally:
-            t2 = time.perf_counter()
             if (os.getenv("RAG_LOG_TIMINGS", "") or "").strip() == "1":
                 logger.info(
                     "rag_chat_stream kb=%s retrieve_ms=%.1f generate_ms=%.1f total_ms=%.1f",
@@ -312,4 +317,8 @@ def rag_chat_stream(kb: KnowledgeBase, question: str):
                     (t2 - t0) * 1000.0,
                 )
 
-    return gen()
+    return gen(), answer, {
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "total_tokens": usage.total_tokens,
+    }, elapsed_ms

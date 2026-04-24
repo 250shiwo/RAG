@@ -9,6 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Document, DocumentChunk, KnowledgeBase
+from users.models import UserSubscription
 from .serializers import (
     DocumentUploadSerializer,
     KnowledgeBaseCreateSerializer,
@@ -22,6 +23,27 @@ from .services import (
     save_uploaded_file,
 )
 from .vectorstore import add_vectors_to_index, chunk_text, rebuild_index
+
+
+def check_kb_limit(user):
+    """检查用户的知识库数量限制"""
+    # 获取用户的知识库数量
+    kb_count = KnowledgeBase.objects.filter(user=user).count()
+    
+    # 获取用户的知识库数量限制
+    try:
+        subscription = UserSubscription.objects.get(user=user)
+        if subscription.is_active:
+            max_kbs = subscription.plan.max_knowledge_bases
+        else:
+            max_kbs = 1  # 免费版默认1个
+    except UserSubscription.DoesNotExist:
+        max_kbs = 1  # 免费版默认1个
+    
+    if kb_count >= max_kbs:
+        return False, max_kbs
+    
+    return True, max_kbs
 
 
 def _decode_text_bytes(raw: bytes) -> str:
@@ -66,6 +88,14 @@ class KnowledgeBaseCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        # 检查知识库数量限制
+        allowed, max_kbs = check_kb_limit(request.user)
+        if not allowed:
+            return Response(
+                {"detail": f"知识库数量已达上限（{max_kbs}个），请升级订阅"},
+                status=status.HTTP_429_TOO_MANY_REQUESTS
+            )
+
         serializer = KnowledgeBaseCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -264,3 +294,23 @@ class DocumentDeleteView(APIView):
         rebuild_index(Path(faiss_path), remaining_texts, chunk_ids=remaining_ids)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DocumentPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, doc_id: int):
+        doc = Document.objects.select_related("kb").filter(id=doc_id, kb__user=request.user).first()
+        if doc is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        file_path = doc.file_path
+        if not file_path:
+            return Response({"detail": "文件路径不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # 提取文档内容
+            content = _extract_upload_text(Path(file_path))
+            return Response({"content": content, "filename": doc.filename}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"detail": f"预览失败：{str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

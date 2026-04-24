@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "users",
     "knowledge",
     "rag",
+    "payment",
 ]
 
 # DRF 配置：默认不强制登录，但支持通过 Bearer JWT 自动识别用户

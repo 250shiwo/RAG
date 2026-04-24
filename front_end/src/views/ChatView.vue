@@ -1,13 +1,14 @@
 <script setup>
-import { computed, ref, nextTick } from 'vue'
+import { computed, ref, nextTick, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { User, Promotion, Service, Timer, Collection } from '@element-plus/icons-vue'
+import { User, Promotion, Service, Timer, Collection, DataAnalysis } from '@element-plus/icons-vue'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import 'github-markdown-css/github-markdown-light.css'
 
 import { ragChat } from '../api/rag'
+import { getUserUsage } from '../api/users'
 
 const route = useRoute()
 const kbId = Number(route.params.kbId)
@@ -16,8 +17,32 @@ const question = ref('')
 const loading = ref(false)
 const messages = ref([])
 const chatContainer = ref(null)
+const userUsage = ref(null)
+const usageLoading = ref(false)
+const sessionId = ref(null)
 
-const canSend = computed(() => Boolean(question.value.trim()) && !loading.value)
+const canSend = computed(() => {
+  const hasQuestion = Boolean(question.value.trim())
+  const notLoading = !loading.value
+  const hasRemaining = userUsage.value?.remaining > 0
+  return hasQuestion && notLoading && hasRemaining
+})
+
+async function loadUserUsage() {
+  usageLoading.value = true
+  try {
+    const data = await getUserUsage()
+    userUsage.value = data
+  } catch (error) {
+    console.error('获取使用次数失败', error)
+  } finally {
+    usageLoading.value = false
+  }
+}
+
+onMounted(() => {
+  loadUserUsage()
+})
 
 // 安全地渲染 Markdown
 function renderMarkdown(content) {
@@ -65,8 +90,10 @@ async function send() {
   scrollToBottom()
 
   try {
-    const data = await ragChat({ kbId, question: q })
+    const data = await ragChat({ kbId, question: q, session_id: sessionId.value })
     const answer = typeof data?.answer === 'string' ? data.answer : ''
+    // 更新session_id
+    sessionId.value = data.session_id
     messages.value[placeholderIndex] = { 
       role: 'assistant', 
       content: answer || '（无回答）', 
@@ -76,10 +103,14 @@ async function send() {
         token_usage: data.token_usage
       }
     }
+    // 重新加载使用次数
+    await loadUserUsage()
   } catch (e) {
     const msg = getChatErrorMessage(e)
     ElMessage.error(msg)
     messages.value[placeholderIndex] = { role: 'assistant', content: `错误：${msg}`, loading: false, error: true }
+    // 即使出错也重新加载使用次数，因为可能已经消耗了次数
+    await loadUserUsage()
   } finally {
     loading.value = false
     scrollToBottom()
@@ -93,7 +124,21 @@ async function send() {
     <header class="chat-header">
       <div class="header-title">智能问答 (KB {{ kbId }})</div>
       <div class="header-actions">
-        <!-- 预留操作按钮，如清空对话 -->
+        <el-tag 
+          v-if="userUsage" 
+          :type="userUsage.remaining > 0 ? 'success' : 'danger'" 
+          effect="plain"
+          size="small"
+          class="usage-tag"
+        >
+          <el-icon><DataAnalysis /></el-icon>
+          今日剩余: {{ userUsage.remaining }}/{{ userUsage.daily_limit }}次
+        </el-tag>
+        <el-skeleton v-else :loading="usageLoading" animated>
+          <template #template>
+            <el-tag size="small">加载中...</el-tag>
+          </template>
+        </el-skeleton>
       </div>
     </header>
 
@@ -201,6 +246,19 @@ async function send() {
   font-size: 16px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+}
+
+.usage-tag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-radius: 12px;
 }
 
 .chat-body {
