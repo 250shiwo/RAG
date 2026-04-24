@@ -41,3 +41,9 @@ export async function subscribeToPlan(planId) {
   return resp.data
 }
 
+// 支付相关API
+export async function createAlipayOrder(planId) {
+  const resp = await api.post('/api/payment/alipay', { plan_id: planId })
+  return resp.data
+}
+

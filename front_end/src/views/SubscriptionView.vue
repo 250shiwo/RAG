@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getSubscriptionPlans, getUserSubscription, getUserUsage, subscribeToPlan } from '../api/users'
+import { getSubscriptionPlans, getUserSubscription, getUserUsage, createAlipayOrder } from '../api/users'
 
 const plans = ref([])
 const userSubscription = ref(null)
@@ -31,11 +31,11 @@ async function loadData() {
 async function handleSubscribe(planId) {
   subscribing.value = true
   try {
-    await subscribeToPlan(planId)
-    ElMessage.success('订阅成功')
-    await loadData()
+    const result = await createAlipayOrder(planId)
+    // 跳转到支付宝沙箱支付页面
+    window.location.href = result.pay_url
   } catch (error) {
-    ElMessage.error('订阅失败，请重试')
+    ElMessage.error('创建支付订单失败，请重试')
     console.error(error)
   } finally {
     subscribing.value = false
