@@ -294,3 +294,23 @@ class DocumentDeleteView(APIView):
         rebuild_index(Path(faiss_path), remaining_texts, chunk_ids=remaining_ids)
 
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class DocumentPreviewView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, doc_id: int):
+        doc = Document.objects.select_related("kb").filter(id=doc_id, kb__user=request.user).first()
+        if doc is None:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        file_path = doc.file_path
+        if not file_path:
+            return Response({"detail": "文件路径不存在"}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            # 提取文档内容
+            content = _extract_upload_text(Path(file_path))
+            return Response({"content": content, "filename": doc.filename}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"detail": f"预览失败：{str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

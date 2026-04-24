@@ -19,6 +19,7 @@ const messages = ref([])
 const chatContainer = ref(null)
 const userUsage = ref(null)
 const usageLoading = ref(false)
+const sessionId = ref(null)
 
 const canSend = computed(() => {
   const hasQuestion = Boolean(question.value.trim())
@@ -89,8 +90,10 @@ async function send() {
   scrollToBottom()
 
   try {
-    const data = await ragChat({ kbId, question: q })
+    const data = await ragChat({ kbId, question: q, session_id: sessionId.value })
     const answer = typeof data?.answer === 'string' ? data.answer : ''
+    // 更新session_id
+    sessionId.value = data.session_id
     messages.value[placeholderIndex] = { 
       role: 'assistant', 
       content: answer || '（无回答）', 

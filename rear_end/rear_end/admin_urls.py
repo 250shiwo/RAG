@@ -5,6 +5,7 @@ from .admin_views import (
     AdminKnowledgeBaseDetailView,
     AdminKnowledgeBaseDocumentsView,
     AdminKnowledgeBasesView,
+    AdminStatsView,
     AdminUserDetailView,
     AdminUsersView,
 )
@@ -16,5 +17,6 @@ urlpatterns = [
     path("kb/<int:kb_id>", AdminKnowledgeBaseDetailView.as_view()),
     path("kb/<int:kb_id>/documents", AdminKnowledgeBaseDocumentsView.as_view()),
     path("document/<int:doc_id>", AdminDocumentDetailView.as_view()),
+    path("stats", AdminStatsView.as_view()),
 ]
 

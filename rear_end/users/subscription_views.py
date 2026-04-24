@@ -22,14 +22,28 @@ class UserSubscriptionView(APIView):
     def get(self, request):
         try:
             subscription = UserSubscription.objects.get(user=request.user)
-            return Response(UserSubscriptionSerializer(subscription).data)
+            # 计算剩余天数
+            if subscription.is_active:
+                remaining_days = (subscription.end_date - date.today()).days
+            else:
+                remaining_days = 0
+            
+            # 构建响应数据
+            response_data = UserSubscriptionSerializer(subscription).data
+            response_data.update({
+                "remaining_days": remaining_days,
+                "daily_chat_limit": subscription.plan.daily_chat_limit,
+                "max_knowledge_bases": subscription.plan.max_knowledge_bases
+            })
+            return Response(response_data)
         except UserSubscription.DoesNotExist:
             # 返回免费版信息
             return Response({
                 "plan": None,
                 "is_active": False,
                 "daily_chat_limit": 5,
-                "max_knowledge_bases": 1
+                "max_knowledge_bases": 1,
+                "remaining_days": 0
             })
 
 

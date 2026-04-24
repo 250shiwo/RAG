@@ -1,13 +1,13 @@
 import { api } from '../services/api'
 import { getAccessToken } from '../services/auth'
 
-export async function ragChat({ kbId, question }) {
+export async function ragChat({ kbId, question, session_id }) {
   // 问答可能耗时较长（检索 + 大模型生成），单独提高超时时间，避免 20s 默认超时导致前端误判失败
-  const resp = await api.post('/api/rag/chat', { kb_id: kbId, question }, { timeout: 120000 })
+  const resp = await api.post('/api/rag/chat', { kb_id: kbId, question, session_id }, { timeout: 120000 })
   return resp.data
 }
 
-export async function ragChatStream({ kbId, question, onDelta }) {
+export async function ragChatStream({ kbId, question, session_id, onDelta }) {
   const baseURL = import.meta.env.VITE_API_BASE_URL || ''
   const token = getAccessToken()
 
@@ -17,7 +17,7 @@ export async function ragChatStream({ kbId, question, onDelta }) {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ kb_id: kbId, question }),
+    body: JSON.stringify({ kb_id: kbId, question, session_id }),
   })
 
   if (!resp.ok) {
@@ -32,7 +32,7 @@ export async function ragChatStream({ kbId, question, onDelta }) {
   }
 
   if (!resp.body) {
-    return { answer: '' }
+    return { answer: '', session_id: resp.headers.get('X-Session-ID') }
   }
 
   const reader = resp.body.getReader()
@@ -49,5 +49,20 @@ export async function ragChatStream({ kbId, question, onDelta }) {
     }
   }
 
-  return { answer }
+  return { answer, session_id: resp.headers.get('X-Session-ID') }
+}
+
+export async function getChatHistoryList() {
+  const resp = await api.get('/api/rag/history')
+  return resp.data
+}
+
+export async function getChatHistoryDetail(historyId) {
+  const resp = await api.get(`/api/rag/history/${historyId}`)
+  return resp.data
+}
+
+export async function deleteChatHistory(historyId) {
+  const resp = await api.delete(`/api/rag/history/${historyId}`)
+  return resp.data
 }

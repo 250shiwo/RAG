@@ -21,3 +21,8 @@ export async function deleteDocument(docId) {
   await api.delete(`/api/document/${docId}`)
 }
 
+export async function previewDocument(docId) {
+  const resp = await api.get(`/api/document/${docId}/preview`)
+  return resp.data
+}
+

@@ -80,6 +80,11 @@ onMounted(() => {
                   <el-tag type="success" v-if="userSubscription.is_active">已激活</el-tag>
                   <el-tag type="warning" v-else>已过期</el-tag>
                 </el-descriptions-item>
+                <el-descriptions-item label="剩余天数" :span="2">
+                  <el-tag type="info" effect="plain">{{ userSubscription.remaining_days }}天</el-tag>
+                </el-descriptions-item>
+                <el-descriptions-item label="开始日期" :span="2">{{ userSubscription.start_date }}</el-descriptions-item>
+                <el-descriptions-item label="结束日期" :span="2">{{ userSubscription.end_date }}</el-descriptions-item>
               </el-descriptions>
             </div>
           </div>

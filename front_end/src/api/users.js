@@ -47,3 +47,14 @@ export async function createAlipayOrder(planId) {
   return resp.data
 }
 
+// 用户信息管理API
+export async function updateUserInfo(userData) {
+  const resp = await api.put('/api/users/me', userData)
+  return resp.data
+}
+
+export async function changePassword(oldPassword, newPassword) {
+  const resp = await api.post('/api/users/change-password', { old_password: oldPassword, new_password: newPassword })
+  return resp.data
+}
+

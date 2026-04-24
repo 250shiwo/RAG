@@ -1,10 +1,10 @@
 <script setup>
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { UploadFilled, Back, Refresh, Delete, Document } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox, ElDialog } from 'element-plus'
+import { UploadFilled, Back, Refresh, Delete, Document, View } from '@element-plus/icons-vue'
 
-import { deleteDocument, listDocuments, uploadDocument } from '../api/documents'
+import { deleteDocument, listDocuments, uploadDocument, previewDocument } from '../api/documents'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,6 +17,12 @@ const selectedFile = ref(null)
 const onConflict = ref('keep')
 const uploading = ref(false)
 const uploadRef = ref(null)
+
+// 文档预览相关
+const previewDialogVisible = ref(false)
+const previewLoading = ref(false)
+const previewContent = ref('')
+const previewFilename = ref('')
 
 // 允许上传的文件类型（前端校验仅做体验优化，后端仍会做兜底校验）
 const ALLOWED_SUFFIXES = ['.txt', '.md', '.pdf']
@@ -90,6 +96,22 @@ async function onDelete(row) {
     await refresh()
   } catch (e) {
     ElMessage.error('删除失败')
+  }
+}
+
+// 预览文档
+async function onPreview(row) {
+  previewLoading.value = true
+  previewContent.value = ''
+  previewFilename.value = row.filename
+  try {
+    const data = await previewDocument(row.id)
+    previewContent.value = data.content
+    previewDialogVisible.value = true
+  } catch (e) {
+    ElMessage.error(e.response?.data?.detail || '预览失败')
+  } finally {
+    previewLoading.value = false
   }
 }
 
@@ -200,8 +222,9 @@ onMounted(() => {
             {{ formatDate(row.uploaded_at) }}
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" align="right">
+        <el-table-column label="操作" width="200" align="right">
           <template #default="{ row }">
+            <el-button size="small" type="primary" plain :icon="View" @click="onPreview(row)">预览</el-button>
             <el-button size="small" type="danger" plain :icon="Delete" @click="onDelete(row)">删除</el-button>
           </template>
         </el-table-column>
@@ -211,6 +234,22 @@ onMounted(() => {
         </template>
       </el-table>
     </section>
+    
+    <!-- 文档预览弹窗 -->
+    <el-dialog
+      v-model="previewDialogVisible"
+      :title="`文档预览 - ${previewFilename}`"
+      width="800px"
+      :fullscreen="false"
+    >
+      <div v-if="previewLoading" class="preview-loading">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>加载中...</span>
+      </div>
+      <div v-else class="preview-content">
+        <pre>{{ previewContent }}</pre>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -337,5 +376,34 @@ onMounted(() => {
 .file-icon {
   font-size: 18px;
   color: #909399;
+}
+
+.preview-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 0;
+  color: #606266;
+}
+
+.preview-loading .el-icon {
+  margin-right: 10px;
+}
+
+.preview-content {
+  max-height: 600px;
+  overflow-y: auto;
+  padding: 10px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+}
+
+.preview-content pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #303133;
 }
 </style>
