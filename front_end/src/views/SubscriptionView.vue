@@ -1,13 +1,16 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useRoute, useRouter } from 'vue-router'
 import { getSubscriptionPlans, getUserSubscription, getUserUsage, createAlipayOrder } from '../api/users'
 
+const route = useRoute()
+const router = useRouter()
 const plans = ref([])
 const userSubscription = ref(null)
 const userUsage = ref(null)
 const loading = ref(false)
-const subscribing = ref(false)
+const subscribingPlanId = ref(null)
 
 async function loadData() {
   loading.value = true
@@ -29,22 +32,49 @@ async function loadData() {
 }
 
 async function handleSubscribe(planId) {
-  subscribing.value = true
+  subscribingPlanId.value = planId
   try {
     const result = await createAlipayOrder(planId)
-    // 跳转到支付宝沙箱支付页面
-    window.location.href = result.pay_url
+
+    if (!result?.pay_url || typeof result.pay_url !== 'string') {
+      throw new Error('未获取到支付链接')
+    }
+
+    // 使用 assign 直接跳转当前页，避免部分浏览器对 href 赋值场景处理不稳定。
+    window.location.assign(result.pay_url)
   } catch (error) {
     ElMessage.error('创建支付订单失败，请重试')
     console.error(error)
   } finally {
-    subscribing.value = false
+    subscribingPlanId.value = null
   }
+}
+
+async function handleReturnResult() {
+  const paid = route.query.paid
+  const orderId = route.query.order_id
+
+  if (paid !== '1') return
+
+  // 支付回跳后主动刷新一次订阅数据，避免页面继续显示旧套餐。
+  await loadData()
+  ElMessage.success(orderId ? `支付成功，订单 ${orderId} 已更新` : '支付成功，订阅信息已更新')
+
+  // 清理地址栏参数，避免刷新页面时重复提示。
+  router.replace({ path: route.path })
 }
 
 onMounted(() => {
   loadData()
+  handleReturnResult()
 })
+
+watch(
+  () => route.query.paid,
+  () => {
+    handleReturnResult()
+  }
+)
 </script>
 
 <template>
@@ -115,7 +145,7 @@ onMounted(() => {
                 type="primary" 
                 :disabled="userSubscription?.plan?.id === plan.id && userSubscription.is_active"
                 @click="handleSubscribe(plan.id)"
-                :loading="subscribing"
+                :loading="subscribingPlanId === plan.id"
               >
                 {{ userSubscription?.plan?.id === plan.id && userSubscription.is_active ? '当前计划' : '立即订阅' }}
               </el-button>

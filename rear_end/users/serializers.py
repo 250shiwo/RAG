@@ -6,7 +6,8 @@ from .models import SubscriptionPlan, UserSubscription
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['id', 'username', 'email']
+        fields = ['id', 'username', 'email', 'is_staff']
+        read_only_fields = ['id', 'is_staff']
 
 
 class RegisterSerializer(serializers.ModelSerializer):

@@ -57,11 +57,13 @@
       </div>
     </el-card>
     
-    <!-- 对话详情弹窗 -->
-    <el-dialog
+    <!-- 使用不带遮罩的抽屉，避免打开历史详情后拦截左侧菜单点击。 -->
+    <el-drawer
       v-model="dialogVisible"
       title="对话详情"
-      width="600px"
+      size="40%"
+      :modal="false"
+      destroy-on-close
     >
       <div v-if="historyDetail" class="history-detail">
         <div class="detail-item">
@@ -81,7 +83,7 @@
           <div class="value content">{{ historyDetail.answer }}</div>
         </div>
       </div>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
@@ -103,7 +105,8 @@ const loadHistoryList = async () => {
   error.value = ''
   try {
     const data = await getChatHistoryList()
-    historyList.value = data
+    // 兼容后端分页结构，避免页面因数据结构不符而渲染异常。
+    historyList.value = Array.isArray(data) ? data : (data?.items || [])
   } catch (err) {
     error.value = err.response?.data?.detail || '加载历史对话失败'
   } finally {
@@ -238,6 +241,10 @@ onMounted(() => {
 
 .history-detail {
   padding: 10px 0;
+}
+
+:deep(.el-drawer__body) {
+  overflow-y: auto;
 }
 
 .detail-item {

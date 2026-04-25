@@ -20,6 +20,11 @@ export async function getMe() {
   return resp.data
 }
 
+export async function fetchCurrentUserProfile() {
+  const resp = await api.get('/api/users/me')
+  return resp.data
+}
+
 // 订阅相关API
 export async function getSubscriptionPlans() {
   const resp = await api.get('/api/users/subscriptions/plans')

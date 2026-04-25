@@ -141,7 +141,7 @@ class RagChatStreamView(APIView):
             else:
                 full_question = question
             
-            stream, answer, token_usage, elapsed_ms = rag_chat_stream(kb, full_question)
+            stream, stream_state = rag_chat_stream(kb, full_question)
         except RagError as e:
             return Response({"detail": e.detail}, status=e.status_code)
 
@@ -155,9 +155,9 @@ class RagChatStreamView(APIView):
                 kb_id=kb_id,
                 session_id=session_id,
                 question=question,
-                answer=answer,
-                token_usage=token_usage,
-                elapsed_ms=elapsed_ms
+                answer=stream_state.get('answer', ''),
+                token_usage=stream_state.get('token_usage'),
+                elapsed_ms=stream_state.get('elapsed_ms')
             )
 
         resp = StreamingHttpResponse(gen(), content_type="text/plain; charset=utf-8")

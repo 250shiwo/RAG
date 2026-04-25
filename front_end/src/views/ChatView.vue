@@ -7,7 +7,7 @@ import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 import 'github-markdown-css/github-markdown-light.css'
 
-import { ragChat } from '../api/rag'
+import { ragChatStream } from '../api/rag'
 import { getUserUsage } from '../api/users'
 
 const route = useRoute()
@@ -77,30 +77,44 @@ const scrollToBottom = async () => {
 async function send() {
   const q = question.value.trim()
   if (!q || loading.value) return
+  const startedAt = Date.now()
 
   // 添加用户问题
   messages.value.push({ role: 'user', content: q })
   question.value = ''
   loading.value = true
-  scrollToBottom()
+  await scrollToBottom()
 
   // 添加一个占位的 AI 回复
   const placeholderIndex = messages.value.length
   messages.value.push({ role: 'assistant', content: '正在检索并生成回答...', loading: true })
-  scrollToBottom()
+  await scrollToBottom()
 
   try {
-    const data = await ragChat({ kbId, question: q, session_id: sessionId.value })
+    const data = await ragChatStream({
+      kbId,
+      question: q,
+      session_id: sessionId.value,
+      onDelta(_chunk, answer) {
+        messages.value[placeholderIndex] = {
+          role: 'assistant',
+          content: answer || '正在生成回答...',
+          loading: true,
+        }
+        scrollToBottom()
+      }
+    })
     const answer = typeof data?.answer === 'string' ? data.answer : ''
     // 更新session_id
     sessionId.value = data.session_id
-    messages.value[placeholderIndex] = { 
+    messages.value[placeholderIndex] = {
       role: 'assistant', 
-      content: answer || '（无回答）', 
+      content: answer || '（无回答）',
       loading: false,
       metrics: {
-        elapsed_ms: data.elapsed_ms,
-        token_usage: data.token_usage
+        // 流式接口优先优化首屏体验，这里先展示本次请求总耗时。
+        elapsed_ms: Date.now() - startedAt,
+        token_usage: data.token_usage || null
       }
     }
     // 重新加载使用次数
@@ -168,7 +182,7 @@ async function send() {
               <div class="bubble" :class="{ 'is-loading': m.loading, 'is-error': m.error }">
                 <div v-if="m.role === 'user'" class="user-content">{{ m.content }}</div>
                 <div v-else-if="m.loading" class="loading-content">
-                  {{ m.content }}
+                  <span class="loading-text">{{ m.content }}</span>
                   <span class="typing-indicator">
                     <span>.</span><span>.</span><span>.</span>
                   </span>

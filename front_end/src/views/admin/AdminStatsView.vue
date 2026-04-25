@@ -4,6 +4,7 @@
       <template #header>
         <div class="card-header">
           <span>系统统计</span>
+          <el-button :loading="loading" type="primary" plain @click="loadStats">刷新</el-button>
         </div>
       </template>
       
@@ -108,10 +109,9 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Loading, DataAnalysis, Users, Document, ChatLineRound, Subscription } from '@element-plus/icons-vue'
+import { Loading } from '@element-plus/icons-vue'
+import { fetchAdminStats } from '../../api/admin'
 
-// 模拟数据，实际应该从API获取
 const loading = ref(false)
 const error = ref('')
 const stats = ref({
@@ -138,53 +138,43 @@ const stats = ref({
   }
 })
 
-// 加载统计数据
+// 从后端读取管理员统计数据，避免页面继续展示写死的占位信息。
 const loadStats = async () => {
   loading.value = true
   error.value = ''
+
   try {
-    // 实际项目中，这里应该调用API获取统计数据
-    // const response = await api.get('/api/admin/stats')
-    // stats.value = response.data
-    
-    // 模拟数据
-    setTimeout(() => {
-      stats.value = {
-        users: {
-          total: 100,
-          active: 85
+    const data = await fetchAdminStats()
+    stats.value = {
+      users: {
+        total: data?.users?.total ?? 0,
+        active: data?.users?.active ?? 0,
+      },
+      knowledge_bases: {
+        total: data?.knowledge_bases?.total ?? 0,
+      },
+      documents: {
+        total: data?.documents?.total ?? 0,
+      },
+      chats: {
+        total: data?.chats?.total ?? 0,
+        today: data?.chats?.today ?? 0,
+      },
+      subscriptions: Array.isArray(data?.subscriptions) ? data.subscriptions : [],
+      usage: {
+        today: {
+          total_users: data?.usage?.today?.total_users ?? 0,
+          total_chats: data?.usage?.today?.total_chats ?? 0,
         },
-        knowledge_bases: {
-          total: 150
-        },
-        documents: {
-          total: 500
-        },
-        chats: {
-          total: 2000,
-          today: 50
-        },
-        subscriptions: [
-          { plan: '免费版', user_count: 80 },
-          { plan: '¥9.9/月', user_count: 15 },
-          { plan: '¥29.9/月', user_count: 5 }
-        ],
-        usage: {
-          today: {
-            total_users: 30,
-            total_chats: 50
-          }
-        }
-      }
-      loading.value = false
-    }, 1000)
+      },
+    }
   } catch (err) {
     error.value = err.response?.data?.detail || '加载统计数据失败'
+  } finally {
     loading.value = false
   }
 }
 
-// 组件挂载时加载统计数据
 onMounted(() => {
   loadStats()
 })

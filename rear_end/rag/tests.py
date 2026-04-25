@@ -41,7 +41,7 @@ class RagChatApiTests(APITestCase):
                 access1 = self._login_and_get_access("rag_u1", "StrongPass123!@#")
 
                 kb_resp = self.client.post(
-                    "/api/kb/create",
+                    "/api/knowledge/create",
                     {"name": "kb1"},
                     format="json",
                     HTTP_AUTHORIZATION=f"Bearer {access1}",
@@ -72,7 +72,7 @@ class RagChatApiTests(APITestCase):
                 access2 = self._login_and_get_access("rag_u2", "StrongPass123!@#")
 
                 kb_resp = self.client.post(
-                    "/api/kb/create",
+                    "/api/knowledge/create",
                     {"name": "kb1"},
                     format="json",
                     HTTP_AUTHORIZATION=f"Bearer {access1}",
@@ -94,7 +94,7 @@ class RagChatApiTests(APITestCase):
                 access1 = self._login_and_get_access("rag_u1", "StrongPass123!@#")
 
                 kb_resp = self.client.post(
-                    "/api/kb/create",
+                    "/api/knowledge/create",
                     {"name": "kb1"},
                     format="json",
                     HTTP_AUTHORIZATION=f"Bearer {access1}",
@@ -104,7 +104,7 @@ class RagChatApiTests(APITestCase):
 
                 upload_file = SimpleUploadedFile("a.txt", b"hello rag\n" * 50, content_type="text/plain")
                 up_resp = self.client.post(
-                    "/api/kb/upload",
+                    "/api/knowledge/upload",
                     {"kb_id": kb_id, "file": upload_file},
                     format="multipart",
                     HTTP_AUTHORIZATION=f"Bearer {access1}",
@@ -126,3 +126,37 @@ class RagChatApiTests(APITestCase):
                 self.assertIn("prompt_tokens", chat_resp.data["token_usage"])
                 self.assertIn("completion_tokens", chat_resp.data["token_usage"])
                 self.assertIn("total_tokens", chat_resp.data["token_usage"])
+
+    def test_chat_stream_returns_streamed_answer(self):
+        with tempfile.TemporaryDirectory() as faiss_dir, tempfile.TemporaryDirectory() as upload_dir:
+            with override_settings(FAISS_INDEX_ROOT=Path(faiss_dir), KB_UPLOAD_ROOT=Path(upload_dir)):
+                access1 = self._login_and_get_access("rag_u1", "StrongPass123!@#")
+
+                kb_resp = self.client.post(
+                    "/api/knowledge/create",
+                    {"name": "kb_stream"},
+                    format="json",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(kb_resp.status_code, 201)
+                kb_id = kb_resp.data["id"]
+
+                upload_file = SimpleUploadedFile("stream.txt", b"hello stream\n" * 50, content_type="text/plain")
+                up_resp = self.client.post(
+                    "/api/knowledge/upload",
+                    {"kb_id": kb_id, "file": upload_file},
+                    format="multipart",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(up_resp.status_code, 201)
+
+                stream_resp = self.client.post(
+                    "/api/rag/chat/stream",
+                    {"kb_id": kb_id, "question": "hello?"},
+                    format="json",
+                    HTTP_AUTHORIZATION=f"Bearer {access1}",
+                )
+                self.assertEqual(stream_resp.status_code, 200)
+                answer = b"".join(stream_resp.streaming_content).decode("utf-8")
+                self.assertTrue(answer.strip())
+                self.assertTrue(stream_resp.headers.get("X-Session-ID"))

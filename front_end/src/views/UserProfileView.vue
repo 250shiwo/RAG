@@ -1,8 +1,10 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { getMe, updateUserInfo, changePassword } from '../api/users'
 
+const router = useRouter()
 const userInfo = ref({})
 const loading = ref(false)
 const activeTab = ref('profile')
@@ -91,6 +93,10 @@ async function handleChangePassword() {
   }
 }
 
+function goToSubscription() {
+  router.push('/subscription')
+}
+
 onMounted(() => {
   loadUserInfo()
 })
@@ -102,6 +108,7 @@ onMounted(() => {
       <template #header>
         <div class="card-header">
           <h2>个人信息管理</h2>
+          <el-button type="primary" plain @click="goToSubscription">订阅套餐</el-button>
         </div>
       </template>
 

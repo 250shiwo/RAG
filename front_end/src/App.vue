@@ -1,20 +1,36 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterView } from 'vue-router'
-import { DataBoard, Document, ChatLineRound, SwitchButton, User, Files } from '@element-plus/icons-vue'
-import { clearTokens, hasAccessToken } from './services/auth'
+import { DataAnalysis, DataBoard, Document, ChatLineRound, SwitchButton, User, Files, CreditCard } from '@element-plus/icons-vue'
+import { fetchCurrentUserProfile } from './api/users'
+import { clearCurrentUser, clearTokens, currentUserState, hasAccessToken, isAdminUser, setCurrentUser } from './services/auth'
 
 const route = useRoute()
 const router = useRouter()
 
 const requiresAuth = computed(() => Boolean(route.meta?.requiresAuth))
 const kbId = computed(() => route.params?.kbId)
+const currentUser = computed(() => currentUserState.value)
+const adminVisible = computed(() => isAdminUser())
 
 // 退出登录函数
 function logout() {
   clearTokens()
   router.push('/login')
 }
+
+onMounted(async () => {
+  if (!hasAccessToken() || currentUser.value) return
+
+  try {
+    // 页面刷新后恢复当前用户信息，保证菜单按角色正确显示。
+    const profile = await fetchCurrentUserProfile()
+    setCurrentUser(profile)
+  } catch (error) {
+    clearCurrentUser()
+    console.error(error)
+  }
+})
 </script>
 
 <template>
@@ -47,37 +63,43 @@ function logout() {
         </el-menu-item>
 
         <div class="menu-divider"></div>
-        <div class="menu-group-title">管理员专区</div>
-        <el-menu-item index="/admin/users">
-          <el-icon><User /></el-icon>
-          <span>用户管理</span>
-        </el-menu-item>
-        <el-menu-item index="/admin/kbs">
-          <el-icon><Files /></el-icon>
-          <span>全局知识库</span>
-        </el-menu-item>
-        <el-menu-item index="/admin/stats">
-          <el-icon><DataAnalysis /></el-icon>
-          <span>系统统计</span>
-        </el-menu-item>
-        
-        <div class="menu-divider"></div>
         <el-menu-item index="/profile">
           <el-icon><User /></el-icon>
           <span>个人信息</span>
         </el-menu-item>
         <el-menu-item index="/subscription">
-          <el-icon><SwitchButton /></el-icon>
-          <span>订阅管理</span>
+          <el-icon><CreditCard /></el-icon>
+          <span>订阅套餐</span>
         </el-menu-item>
         <el-menu-item index="/chat-history">
           <el-icon><ChatLineRound /></el-icon>
           <span>历史对话</span>
         </el-menu-item>
+
+        <template v-if="adminVisible">
+          <div class="menu-divider"></div>
+          <div class="menu-group-title">管理员专区</div>
+          <el-menu-item index="/admin/users">
+            <el-icon><User /></el-icon>
+            <span>用户管理</span>
+          </el-menu-item>
+          <el-menu-item index="/admin/kbs">
+            <el-icon><Files /></el-icon>
+            <span>全局知识库</span>
+          </el-menu-item>
+          <el-menu-item index="/admin/stats">
+            <el-icon><DataAnalysis /></el-icon>
+            <span>系统统计</span>
+          </el-menu-item>
+        </template>
       </el-menu>
       
       <!-- 底部用户信息或退出登录 -->
       <div class="sidebar-footer">
+        <div v-if="currentUser" class="user-summary">
+          <div class="user-name">{{ currentUser.username }}</div>
+          <div class="user-role">{{ currentUser.is_staff ? '管理员' : '普通用户' }}</div>
+        </div>
         <el-button v-if="hasAccessToken()" class="logout-btn" type="danger" text @click="logout">
           <el-icon><SwitchButton /></el-icon>
           退出登录
@@ -180,6 +202,25 @@ function logout() {
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid var(--border-color);
+}
+
+.user-summary {
+  margin-bottom: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background-color: var(--bg-color);
+}
+
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.user-role {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
 }
 
 .logout-btn {

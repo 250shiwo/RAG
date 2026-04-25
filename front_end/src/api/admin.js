@@ -46,3 +46,9 @@ export async function listAdminKbDocuments(kbId) {
 export async function deleteAdminDocument(id) {
   await api.delete(`/api/admin/document/${id}`)
 }
+
+export async function fetchAdminStats() {
+  // 读取管理员统计看板的真实数据。
+  const resp = await api.get('/api/admin/stats')
+  return resp.data
+}

@@ -297,17 +297,28 @@ def rag_chat_stream(kb: KnowledgeBase, question: str):
     t0 = time.perf_counter()
     contexts = retrieve_contexts(kb, question, top_k=cfg.top_k)
     t1 = time.perf_counter()
-
-    # 生成完整回答以保存到数据库
-    answer, usage = generate_answer_with_usage(question, contexts, max_context_chars=cfg.max_context_chars)
-    answer = (answer or "").strip()
-    t2 = time.perf_counter()
-    elapsed_ms = int(max(0.0, (t2 - t0) * 1000.0))
+    answer_parts: list[str] = []
+    stream_state = {
+        "answer": "",
+        "elapsed_ms": 0,
+        "token_usage": {
+            "prompt_tokens": None,
+            "completion_tokens": None,
+            "total_tokens": None,
+        },
+    }
 
     def gen():
         try:
-            yield from stream_answer(question, contexts, max_context_chars=cfg.max_context_chars)
+            for delta in stream_answer(question, contexts, max_context_chars=cfg.max_context_chars):
+                if delta:
+                    answer_parts.append(delta)
+                    yield delta
         finally:
+            t2 = time.perf_counter()
+            answer = "".join(answer_parts).strip()
+            stream_state["answer"] = answer
+            stream_state["elapsed_ms"] = int(max(0.0, (t2 - t0) * 1000.0))
             if (os.getenv("RAG_LOG_TIMINGS", "") or "").strip() == "1":
                 logger.info(
                     "rag_chat_stream kb=%s retrieve_ms=%.1f generate_ms=%.1f total_ms=%.1f",
@@ -317,8 +328,4 @@ def rag_chat_stream(kb: KnowledgeBase, question: str):
                     (t2 - t0) * 1000.0,
                 )
 
-    return gen(), answer, {
-        "prompt_tokens": usage.prompt_tokens,
-        "completion_tokens": usage.completion_tokens,
-        "total_tokens": usage.total_tokens,
-    }, elapsed_ms
+    return gen(), stream_state

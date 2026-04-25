@@ -11,7 +11,8 @@ import ChatHistoryView from '../views/ChatHistoryView.vue'
 import AdminUsersView from '../views/admin/AdminUsersView.vue'
 import AdminKbsView from '../views/admin/AdminKbsView.vue'
 import AdminStatsView from '../views/admin/AdminStatsView.vue'
-import { hasAccessToken } from '../services/auth'
+import { fetchCurrentUserProfile } from '../api/users'
+import { getCurrentUser, hasAccessToken, isAdminUser, setCurrentUser, clearCurrentUser } from '../services/auth'
 
 const routes = [
   { path: '/', redirect: '/kb' },
@@ -23,9 +24,9 @@ const routes = [
   { path: '/profile', component: UserProfileView, meta: { requiresAuth: true, title: '个人信息' } },
   { path: '/subscription', component: SubscriptionView, meta: { requiresAuth: true, title: '订阅管理' } },
   { path: '/chat-history', component: ChatHistoryView, meta: { requiresAuth: true, title: '历史对话' } },
-  { path: '/admin/users', component: AdminUsersView, meta: { requiresAuth: true, title: '用户管理' } },
-  { path: '/admin/kbs', component: AdminKbsView, meta: { requiresAuth: true, title: '全局知识库' } },
-  { path: '/admin/stats', component: AdminStatsView, meta: { requiresAuth: true, title: '系统统计' } },
+  { path: '/admin/users', component: AdminUsersView, meta: { requiresAuth: true, requiresAdmin: true, title: '用户管理' } },
+  { path: '/admin/kbs', component: AdminKbsView, meta: { requiresAuth: true, requiresAdmin: true, title: '全局知识库' } },
+  { path: '/admin/stats', component: AdminStatsView, meta: { requiresAuth: true, requiresAdmin: true, title: '系统统计' } },
 ]
 
 export const router = createRouter({
@@ -39,6 +40,27 @@ router.beforeEach((to) => {
   }
   if ((to.path === '/login' || to.path === '/register') && hasAccessToken()) {
     return { path: '/kb' }
+  }
+  if (to.meta?.requiresAdmin) {
+    const guard = async () => {
+      if (!getCurrentUser()) {
+        try {
+          // 刷新页面后从后端恢复当前用户角色信息。
+          const profile = await fetchCurrentUserProfile()
+          setCurrentUser(profile)
+        } catch (error) {
+          clearCurrentUser()
+          return { path: '/login', query: { redirect: to.fullPath } }
+        }
+      }
+
+      if (!isAdminUser()) {
+        return { path: '/kb' }
+      }
+
+      return true
+    }
+    return guard()
   }
   return true
 })

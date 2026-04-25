@@ -4,8 +4,8 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { User, Lock } from '@element-plus/icons-vue'
 
-import { loginUser } from '../api/users'
-import { setTokens } from '../services/auth'
+import { fetchCurrentUserProfile, loginUser } from '../api/users'
+import { clearCurrentUser, setCurrentUser, setTokens } from '../services/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -31,6 +31,14 @@ async function submit() {
   try {
     const data = await loginUser({ username: form.username, password: form.password })
     setTokens({ access: data.access, refresh: data.refresh })
+    try {
+      // 登录成功后立即拉取用户信息，供菜单和路由做角色判断。
+      const profile = await fetchCurrentUserProfile()
+      setCurrentUser(profile)
+    } catch (profileError) {
+      clearCurrentUser()
+      console.error(profileError)
+    }
     ElMessage.success('登录成功')
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/kb'
     router.replace(redirect)
@@ -177,4 +185,3 @@ function toRegister() {
   box-shadow: 0 0 0 1px var(--border-color) inset;
 }
 </style>
-
